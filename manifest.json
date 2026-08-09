@@ -1,14 +1,15 @@
 {
-  "name": "AI Translator",
-  "description": "Перевод сообщений через Groq с пресетами стиля, сохранением регистра и защитой символов",
+  "name": "DIAG",
+  "description": "Диагностика загрузчика плагинов",
   "authors": [
     {
-      "name": "hinako"
+      "name": "hinako",
+      "id": "0"
     }
   ],
   "main": "index.js",
+  "hash": "1c9c9ef98cb8257a508aacebe614f8f8b0441a1e9c1ca45872568857a2c27ce1",
   "vendetta": {
-    "icon": "ic_locale_24px"
-  },
-  "hash": "b300d96a1afbcc3c5dbe5ef4f2f136b35340c340f4dbccaca935163c1918ba96"
+    "icon": "ic_info_24px"
+  }
 }
