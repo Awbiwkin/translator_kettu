@@ -1,5 +1,7 @@
 (function () {
-var __plugin = (function () {
+var __plugin;
+try {
+  __plugin = (function () {
 "use strict";
 var __missing = [];
 var __modName = "?";
@@ -113,25 +115,30 @@ const PRESETS = {
 
 // ----------------------------------------------- защита символов и декора
 
+// ВАЖНО: никаких \u{...} и никакого флага "u". Движок Hermes в React Native
+// может не скомпилировать такую регулярку, а собирается она на верхнем уровне
+// модуля — то есть падение убивает весь плагин ещё до загрузки.
+// Эмодзи описываем суррогатными парами, это работает везде.
 const ATOM =
   "(?:" +
   "<a?:\\w+:\\d+>" + // кастомные эмодзи дискорда
   "|<@[!&]?\\d+>|<#\\d+>" + // пинги и каналы
   "|https?:\\/\\/\\S+" + // ссылки
   "|:[a-z0-9_+-]{2,}:" + // :emoji:
-  "|[\\u{1F000}-\\u{1FAFF}\\u{2600}-\\u{27BF}\\u{FE0F}\\u{2B00}-\\u{2BFF}]" +
-  "|[\\u{1400}-\\u{167F}]" + // ᐢ ᓚ ᘏ ᗢ
-  "|[\\u{02B0}-\\u{02FF}\\u{0300}-\\u{036F}]" + // ˚ ᵎ ꞈ
-  "|[\\u{3000}-\\u{303F}\\u{30FB}]" + // 。、・「」
-  "|[\\u{FF5E}\\u{FF61}-\\u{FF65}]" + // ～ ｡ ｢ ｣ ､ ･
-  "|[\\u{2010}-\\u{2BFF}]" + // ⋆ ⊹ ⁺ ⟡ ꒰ ꒱
-  "|[\\u{A700}-\\u{A7FF}]" +
-  "|[\\u{00B0}\\u{00B7}]" + // ° ·
+  "|[\\uD83C-\\uD83E][\\uDC00-\\uDFFF]" + // эмодзи (суррогатные пары)
+  "|[\\u2600-\\u27BF\\uFE0F\\u2B00-\\u2BFF]" + // символьные эмодзи
+  "|[\\u1400-\\u167F]" + // ᐢ ᓚ ᘏ ᗢ
+  "|[\\u02B0-\\u02FF\\u0300-\\u036F]" + // ˚ ᵎ ꞈ
+  "|[\\u3000-\\u303F\\u30FB]" + // 。、・「」
+  "|[\\uFF5E\\uFF61-\\uFF65]" + // ～ ｡ ｢ ｣ ､ ･
+  "|[\\u2010-\\u2BFF]" + // ⋆ ⊹ ⁺ ⟡ ꒰ ꒱
+  "|[\\uA700-\\uA7FF]" +
+  "|[\\u00B0\\u00B7]" + // ° ·
   ")";
 
 // подряд идущий декор склеиваем в один токен, иначе «⋆ ˚ ｡ ⋆» станет
 // семью плейсхолдерами и модель начнёт их терять
-const DECOR_RE = new RegExp(ATOM + "(?:[ \\t]*" + ATOM + ")*", "gu");
+const DECOR_RE = new RegExp(ATOM + "(?:[ \\t]*" + ATOM + ")*", "g");
 
 function maskDecor(text) {
   const tokens = [];
@@ -646,10 +653,20 @@ function onUnload() {
 
 const settings = Settings;
 
-var __api = { settings: settings, onLoad: onLoad, onUnload: onUnload };
-__api.default = __api;
-return __api;
+return { settings: settings, onLoad: onLoad, onUnload: onUnload };
 })();
+} catch (__e) {
+  var __msg = "AI Translator: ошибка при загрузке\n\n" +
+    (__e && (__e.stack || __e.message) ? (__e.stack || __e.message) : String(__e));
+  __plugin = {
+    onLoad: function () {
+      try { alert(__msg); return; } catch (e) {}
+      try { console.log(__msg); } catch (e) {}
+    },
+    onUnload: function () {}
+  };
+}
+try { __plugin.default = __plugin; } catch (e) {}
 try { if (typeof module !== "undefined" && module) module.exports = __plugin; } catch (e) {}
 try { if (typeof exports !== "undefined" && exports) exports.default = __plugin; } catch (e) {}
 try { globalThis.vendetta_plugin = __plugin; } catch (e) {}
