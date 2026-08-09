@@ -1,6 +1,6 @@
 {
-  "name": "AI Translator",
-  "description": "Перевод через Groq с пресетами стиля",
+  "name": "AI Translator Lite",
+  "description": "Перевод через Groq. Настройка командами /trkey и /trset",
   "authors": [
     {
       "name": "hinako",
@@ -8,5 +8,5 @@
     }
   ],
   "main": "index.js",
-  "hash": "991af0c7c5b826ad463c4fd58e596e860d751769422441c8121752cb7d06a996"
+  "hash": "6bb4ae5c67855438c414501ee7a3c90f988d4800a66a7a2de5c316179ff15e31"
 }
