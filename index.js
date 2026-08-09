@@ -1,27 +1,46 @@
 (function () {
 var __plugin = (function () {
 "use strict";
+var __missing = [];
+var __modName = "?";
 var __mod = (function () {
   var g = typeof globalThis !== "undefined" ? globalThis : this;
-  var candidates = [g.vendetta, g.bunny, g.kettu, g.revenge];
-  if (g.__vendetta_loader && g.__vendetta_loader.api)
-    candidates.push(g.__vendetta_loader.api);
-  for (var i = 0; i < candidates.length; i++) {
-    var c = candidates[i];
-    if (c && (c.metro || c.plugin || c.patcher)) return c;
+  var names = ["vendetta", "bunny", "kettu", "revenge"];
+  for (var i = 0; i < names.length; i++) {
+    var c = g[names[i]];
+    if (c && (c.metro || c.plugin || c.patcher || c.api)) {
+      __modName = names[i];
+      return c;
+    }
   }
-  throw new Error("AI Translator: не найден API мода (vendetta/bunny/kettu)");
+  if (g.__vendetta_loader && g.__vendetta_loader.api) {
+    __modName = "__vendetta_loader.api";
+    return g.__vendetta_loader.api;
+  }
+  return {};
 })();
-function __req(path) {
-  var cur = __mod;
-  var parts = path.replace(/^@vendetta\/?/, "").split("/").filter(Boolean);
+
+// Часть форков держит API в корне (vendetta.metro), часть — во вложенном
+// объекте (bunny.api.metro). Пробуем оба, ничего не бросаем: пусть плагин
+// загрузится и внятно скажет, чего не хватает, вместо тихого падения.
+function __dig(root, parts) {
+  var cur = root;
   for (var i = 0; i < parts.length; i++) {
-    if (cur == null) break;
+    if (cur == null) return undefined;
     cur = cur[parts[i]];
   }
-  if (cur == null)
-    throw new Error("AI Translator: мод не отдал модуль " + path);
   return cur;
+}
+function __req(path) {
+  var parts = path.replace(/^@vendetta\/?/, "").split("/").filter(Boolean);
+  if (parts.length === 0) return __mod;
+  var hit = __dig(__mod, parts);
+  if (hit == null && __mod.api) hit = __dig(__mod.api, parts);
+  if (hit == null) {
+    __missing.push(path);
+    return {};
+  }
+  return hit;
 }
 
 // ===== src/core.js =====
@@ -319,26 +338,21 @@ var { useProxy } = __req("@vendetta/storage");
 var { Forms } = __req("@vendetta/ui/components");
 var { React } = __req("@vendetta/metro/common");
 
-const {
-  FormSection,
-  FormInput,
-  FormSwitchRow,
-  FormRadioRow,
-  FormDivider,
-  FormText,
-} = Forms;
-
-const el = React.createElement;
+// Компоненты берём лениво, внутри рендера. Деструктуризация на верхнем
+// уровне роняла бы весь плагин, если форк не отдал ui/components.
+const F = Forms || {};
+const el = (React && React.createElement) || (() => null);
+const FRAG = (React && React.Fragment) || "div";
 
 function Settings() {
   useProxy(storage);
 
   const presetRows = Object.keys(PRESETS).map((key, i) =>
     el(
-      React.Fragment,
+      FRAG,
       { key },
-      i > 0 ? el(FormDivider, null) : null,
-      el(FormRadioRow, {
+      i > 0 ? el(F.FormDivider, null) : null,
+      el(F.FormRadioRow, {
         label: PRESETS[key].label,
         subLabel: PRESETS[key].language,
         onPress: () => (storage.preset = key),
@@ -348,27 +362,27 @@ function Settings() {
   );
 
   return el(
-    React.Fragment,
+    FRAG,
     null,
 
     el(
-      FormSection,
+      F.FormSection,
       { title: "Groq" },
-      el(FormInput, {
+      el(F.FormInput, {
         title: "API key",
         placeholder: "gsk_...",
         value: storage.apiKey,
         secureTextEntry: true,
         onChange: (v) => (storage.apiKey = v.trim()),
       }),
-      el(FormDivider, null),
-      el(FormInput, {
+      el(F.FormDivider, null),
+      el(F.FormInput, {
         title: "Модель",
         placeholder: "llama-3.3-70b-versatile",
         value: storage.model,
         onChange: (v) => (storage.model = v.trim()),
       }),
-      el(FormText, {
+      el(F.FormText, {
         style: { paddingHorizontal: 16, paddingBottom: 8, opacity: 0.6 },
         children:
           "Названия моделей у Groq меняются. Если ловишь 404 — посмотри " +
@@ -376,12 +390,12 @@ function Settings() {
       })
     ),
 
-    el(FormSection, { title: "Пресет по умолчанию" }, ...presetRows),
+    el(F.FormSection, { title: "Пресет по умолчанию" }, ...presetRows),
 
     el(
-      FormSection,
+      F.FormSection,
       { title: "Префикс в поле ввода" },
-      el(FormSwitchRow, {
+      el(F.FormSwitchRow, {
         label: "Включить префикс",
         subLabel:
           "Сообщение, начинающееся с префикса, переводится автоматически " +
@@ -389,8 +403,8 @@ function Settings() {
         value: storage.prefixEnabled,
         onValueChange: (v) => (storage.prefixEnabled = v),
       }),
-      el(FormDivider, null),
-      el(FormInput, {
+      el(F.FormDivider, null),
+      el(F.FormInput, {
         title: "Префикс",
         placeholder: "..",
         value: storage.prefix,
@@ -399,9 +413,9 @@ function Settings() {
     ),
 
     el(
-      FormSection,
+      F.FormSection,
       { title: "Как пользоваться" },
-      el(FormText, {
+      el(F.FormText, {
         style: { paddingHorizontal: 16, paddingVertical: 8, opacity: 0.7 },
         children:
           "/tr текст — перевести и отправить пресетом по умолчанию\n" +
@@ -416,6 +430,11 @@ function Settings() {
 
 // ===== src/index.js =====
 // index.js — точка входа плагина.
+//
+// Важно: на верхнем уровне файла НИЧЕГО не выполняется, кроме объявлений.
+// Вся регистрация — внутри onLoad и под try/catch. Иначе, если форк отдаёт
+// API по другому пути, плагин падает при подключении и мод просто не даёт
+// включить галочку, не объясняя причину.
 
 var { registerCommand } = __req("@vendetta/commands");
 var { findByProps } = __req("@vendetta/metro");
@@ -430,36 +449,37 @@ const CommandType = { CHAT: 1 };
 const InputType = { BUILT_IN: 0, BUILT_IN_TEXT: 1 };
 const OptionType = { STRING: 3 };
 
-// ------------------------------------------------------- значения по умолчанию
-
-function setDefault(key, value) {
-  if (storage[key] === undefined || storage[key] === null) storage[key] = value;
-}
-setDefault("apiKey", "");
-setDefault("model", "llama-3.3-70b-versatile");
-setDefault("preset", "en_teen");
-setDefault("prefixEnabled", false);
-setDefault("prefix", "..");
-
-const cfg = () => ({ apiKey: storage.apiKey, model: storage.model });
-
-const presetChoices = Object.keys(PRESETS).map((k) => ({
-  name: PRESETS[k].label,
-  displayName: PRESETS[k].label,
-  value: k,
-}));
-
-function argValue(args, name) {
-  const found = args.find((a) => a.name === name);
-  return found ? found.value : undefined;
-}
-
-// ------------------------------------------------------------- команды
-
 const unregisters = [];
 const unpatches = [];
 
-function makeTextOption() {
+// ------------------------------------------------------------- вспомогательное
+
+function notify(msg) {
+  try {
+    if (typeof showToast === "function") return showToast(msg);
+  } catch (e) {}
+  try {
+    if (typeof alert === "function") return alert(msg);
+  } catch (e) {}
+  console.log("[AI Translator] " + msg);
+}
+
+function setDefault(key, value) {
+  if (!storage) return;
+  if (storage[key] === undefined || storage[key] === null) storage[key] = value;
+}
+
+const cfg = () => ({
+  apiKey: storage ? storage.apiKey : "",
+  model: storage ? storage.model : "llama-3.3-70b-versatile",
+});
+
+function argValue(args, name) {
+  const found = (args || []).find((a) => a.name === name);
+  return found ? found.value : undefined;
+}
+
+function textOption() {
   return {
     name: "text",
     displayName: "text",
@@ -470,119 +490,165 @@ function makeTextOption() {
   };
 }
 
-unregisters.push(
-  registerCommand({
-    name: "tr",
-    displayName: "tr",
-    description: "Перевести и отправить",
-    displayDescription: "Перевести и отправить",
-    type: CommandType.CHAT,
-    inputType: InputType.BUILT_IN_TEXT,
-    applicationId: "-1",
-    options: [
-      makeTextOption(),
-      {
-        name: "preset",
-        displayName: "preset",
-        description: "Разово другой пресет",
-        displayDescription: "Разово другой пресет",
-        type: OptionType.STRING,
-        required: false,
-        choices: presetChoices,
-      },
-    ],
-    execute: async (args) => {
-      const text = argValue(args, "text") || "";
-      const preset = argValue(args, "preset") || storage.preset;
-      try {
-        return { content: await translate(text, preset, cfg()) };
-      } catch (e) {
-        showToast(`tr: ${e.message}`);
-        // не теряем набранное — отправляем как есть
-        return { content: text };
-      }
-    },
-  })
-);
+// ------------------------------------------------------------- загрузка
 
-// обратный перевод: результат видно только тебе
-const Clyde = findByProps("sendBotMessage");
+function onLoad() {
+  // диагностика: если мод не отдал нужные куски API, скажем об этом вслух
+  if (typeof __missing !== "undefined" && __missing.length) {
+    notify(
+      "AI Translator: мод «" +
+        __modName +
+        "» не отдал " +
+        __missing.join(", ")
+    );
+  }
 
-unregisters.push(
-  registerCommand({
-    name: "ru",
-    displayName: "ru",
-    description: "Показать русский перевод только себе",
-    displayDescription: "Показать русский перевод только себе",
-    type: CommandType.CHAT,
-    inputType: InputType.BUILT_IN,
-    applicationId: "-1",
-    options: [makeTextOption()],
-    execute: async (args, ctx) => {
-      const text = argValue(args, "text") || "";
-      try {
-        const out = await translate(text, "ru_back", cfg());
-        if (Clyde && Clyde.sendBotMessage) Clyde.sendBotMessage(ctx.channel.id, out);
-      } catch (e) {
-        if (Clyde && Clyde.sendBotMessage) Clyde.sendBotMessage(ctx.channel.id, "Ошибка: " + e.message);
-      }
-    },
-  })
-);
+  setDefault("apiKey", "");
+  setDefault("model", "llama-3.3-70b-versatile");
+  setDefault("preset", "en_teen");
+  setDefault("prefixEnabled", false);
+  setDefault("prefix", "..");
 
-// ------------------------------------------------- режим префикса (опционально)
+  const presetChoices = Object.keys(PRESETS).map((k) => ({
+    name: PRESETS[k].label,
+    displayName: PRESETS[k].label,
+    value: k,
+  }));
 
-const MessageSender = findByProps("sendMessage", "startEditMessage");
-
-if (MessageSender) {
-  unpatches.push(
-    instead("sendMessage", MessageSender, function (args, orig) {
-      const message = args[1];
-      const content = message && typeof message.content === "string"
-        ? message.content
-        : "";
-      const pfx = storage.prefix || "..";
-
-      if (!storage.prefixEnabled || !pfx || !content.startsWith(pfx)) {
-        return orig.apply(this, args);
-      }
-
-      const body = content.slice(pfx.length);
-      if (!body.trim()) return orig.apply(this, args);
-
-      // перевод асинхронный, поэтому отдаём промис
-      return translate(body, storage.preset, cfg())
-        .then((out) => {
-          args[1] = Object.assign({}, message, { content: out });
-          return orig.apply(this, args);
+  // --- команды
+  if (typeof registerCommand === "function") {
+    try {
+      unregisters.push(
+        registerCommand({
+          name: "tr",
+          displayName: "tr",
+          description: "Перевести и отправить",
+          displayDescription: "Перевести и отправить",
+          type: CommandType.CHAT,
+          inputType: InputType.BUILT_IN_TEXT,
+          applicationId: "-1",
+          options: [
+            textOption(),
+            {
+              name: "preset",
+              displayName: "preset",
+              description: "Разово другой пресет",
+              displayDescription: "Разово другой пресет",
+              type: OptionType.STRING,
+              required: false,
+              choices: presetChoices,
+            },
+          ],
+          execute: async (args) => {
+            const text = argValue(args, "text") || "";
+            const preset = argValue(args, "preset") || storage.preset;
+            try {
+              return { content: await translate(text, preset, cfg()) };
+            } catch (e) {
+              notify("tr: " + e.message);
+              return { content: text }; // не теряем набранное
+            }
+          },
         })
-        .catch((e) => {
-          showToast(`tr: ${e.message}`);
-          args[1] = Object.assign({}, message, { content: body });
-          return orig.apply(this, args);
-        });
-    })
-  );
+      );
+
+      const Clyde = typeof findByProps === "function"
+        ? findByProps("sendBotMessage")
+        : null;
+
+      unregisters.push(
+        registerCommand({
+          name: "ru",
+          displayName: "ru",
+          description: "Показать русский перевод только себе",
+          displayDescription: "Показать русский перевод только себе",
+          type: CommandType.CHAT,
+          inputType: InputType.BUILT_IN,
+          applicationId: "-1",
+          options: [textOption()],
+          execute: async (args, ctx) => {
+            const text = argValue(args, "text") || "";
+            let out;
+            try {
+              out = await translate(text, "ru_back", cfg());
+            } catch (e) {
+              out = "Ошибка: " + e.message;
+            }
+            if (Clyde && Clyde.sendBotMessage && ctx && ctx.channel) {
+              Clyde.sendBotMessage(ctx.channel.id, out);
+            } else {
+              notify(out);
+            }
+          },
+        })
+      );
+    } catch (e) {
+      notify("AI Translator: не удалось зарегистрировать команды — " + e.message);
+    }
+  } else {
+    notify("AI Translator: мод не отдал registerCommand — команды недоступны");
+  }
+
+  // --- режим префикса, необязательный
+  try {
+    const MessageSender =
+      typeof findByProps === "function"
+        ? findByProps("sendMessage", "startEditMessage")
+        : null;
+
+    if (MessageSender && typeof instead === "function") {
+      unpatches.push(
+        instead("sendMessage", MessageSender, function (args, orig) {
+          const message = args[1];
+          const content =
+            message && typeof message.content === "string" ? message.content : "";
+          const pfx = storage.prefix || "..";
+
+          if (!storage.prefixEnabled || !pfx || content.indexOf(pfx) !== 0) {
+            return orig.apply(this, args);
+          }
+          const body = content.slice(pfx.length);
+          if (!body.trim()) return orig.apply(this, args);
+
+          const self = this;
+          return translate(body, storage.preset, cfg())
+            .then((out) => {
+              args[1] = Object.assign({}, message, { content: out });
+              return orig.apply(self, args);
+            })
+            .catch((e) => {
+              notify("tr: " + e.message);
+              args[1] = Object.assign({}, message, { content: body });
+              return orig.apply(self, args);
+            });
+        })
+      );
+    }
+  } catch (e) {
+    notify("AI Translator: режим префикса недоступен — " + e.message);
+  }
 }
-
-// ------------------------------------------------------------- жизненный цикл
-
-const settings = Settings;
 
 function onUnload() {
   for (const u of unregisters) {
     try {
       u();
-    } catch {}
+    } catch (e) {}
   }
   for (const u of unpatches) {
     try {
       u();
-    } catch {}
+    } catch (e) {}
   }
+  unregisters.length = 0;
+  unpatches.length = 0;
 }
 
-return { settings: settings, onUnload: onUnload, default: { settings: settings, onUnload: onUnload } };
+const settings = Settings;
+
+var __api = { settings: settings, onLoad: onLoad, onUnload: onUnload };
+__api.default = __api;
+return __api;
 })();
 try { if (typeof module !== "undefined" && module) module.exports = __plugin; } catch (e) {}
 try { if (typeof exports !== "undefined" && exports) exports.default = __plugin; } catch (e) {}
